@@ -184,6 +184,73 @@ MODEL_NAME=smollm-360m
 
 ---
 
+## Demo recipes (normal vs. abnormal vitals)
+
+`get_vital_signs` derives a patient's vitals **deterministically from the
+patient id** (the id is hashed, then mapped into the reference ranges). You
+don't edit numbers — you pick an id that hashes to the reading you want, and the
+same id always returns the same vitals. Abnormal vitals trip the safety override,
+which can raise urgency and force escalation, so the *same symptom* can triage
+differently depending on the id.
+
+**Patient ids with normal vitals (all five in range):**
+
+| Patient id        | Vitals |
+|-------------------|--------|
+| `patient-calm-01` | HR 60, SpO₂ 95%, RR 18, SBP 101, Temp 37.0 |
+| `healthy-01`      | HR 91, SpO₂ 100%, RR 17, SBP 100, Temp 36.8 |
+| `healthy-03`      | HR 68, SpO₂ 98%, RR 12, SBP 119, Temp 37.0 |
+
+**Patient ids with abnormal vitals (≥1 out of range → safety override fires):**
+
+| Patient id         | Vitals | Out of range |
+|--------------------|--------|--------------|
+| `patient-dizzy-03` | HR 76, SpO₂ **93%**, RR 14, SBP 119, Temp 37.1 | low SpO₂ |
+| `patient-acute-07` | HR 74, SpO₂ 96%, RR **11**, SBP **83**, Temp 36.5 | low RR + low BP |
+| `demo-patient`     | HR **102**, SpO₂ 97%, RR 17, SBP **121**, Temp 36.5 | high HR + high BP |
+
+You can confirm any id's vitals yourself:
+
+```bash
+python -c "from tools import get_vital_signs_raw, format_vitals; \
+print(format_vitals(get_vital_signs_raw('patient-dizzy-03')))"
+```
+
+### Use cases to demonstrate each behavior
+
+Run with `PATIENT_ID=<id> python agent.py "<symptom>"`, or set the **Patient ID**
+field in the web UI.
+
+The safety override works as a **floor**, never a ceiling: abnormal vitals force
+urgency to **at least MEDIUM**, and red-flag symptoms to **at least HIGH**. The
+model may independently rate a case *higher* than the floor — it just can't go
+lower.
+
+1. **Benign symptom + normal vitals → LOW, no escalation**
+   `PATIENT_ID=patient-calm-01 python agent.py "Mild runny nose and slight sore throat since this morning."`
+
+2. **Safety override floor — benign symptom + abnormal vitals → at least MEDIUM**
+   `PATIENT_ID=patient-dizzy-03 python agent.py "I feel a bit dizzy when I stand up quickly but it passes."`
+   (SpO₂ 93% is out of range, so a would-be LOW is raised to MEDIUM or higher.)
+
+3. **Red-flag symptom → HIGH + escalate, regardless of vitals**
+   `PATIENT_ID=patient-acute-07 python agent.py "Sudden crushing chest pain spreading to my left arm and short of breath."`
+
+4. **Same symptom, vitals raise the floor** (run both, compare urgency)
+   - normal:   `PATIENT_ID=healthy-03 python agent.py "I feel a bit dizzy when I stand up quickly."`
+   - abnormal: `PATIENT_ID=patient-dizzy-03 python agent.py "I feel a bit dizzy when I stand up quickly."`
+   The abnormal-vitals run is always ≥ the normal run — the clearest proof the
+   `get_vital_signs` tool actually changes the decision.
+
+5. **Fail-safe tier — model unreachable → escalates, never crashes, never calls the cloud**
+   `MIMOE_BASE_URL=http://127.0.0.1:9/dead/v1 python agent.py "crushing chest pain"`
+
+> Note: vitals are fully deterministic, but `smollm-360m`'s natural-language
+> classification is not perfectly reproducible — exact urgency for borderline
+> cases can vary between runs. The deterministic *floors* above always hold.
+
+---
+
 ## Limitations & honesty
 
 - This is **not** a medical device and gives **no** medical advice. It is a
