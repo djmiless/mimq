@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from dotenv import load_dotenv
@@ -264,17 +265,35 @@ def _rule_based_fallback(symptom: str, vitals: Optional[dict]) -> TriageResult:
     )
 
 
-def triage_symptom(
+@dataclass
+class TriageRun:
+    """Full trace of one triage loop — what the API and CLI both consume."""
+
+    symptom: str
+    patient_id: str
+    used_vitals: bool
+    vitals: Optional[dict]
+    result: TriageResult
+    source: str  # "json" | "nl-classified" | "fail-safe"
+
+    def to_dict(self) -> dict:
+        return {
+            "symptom": self.symptom,
+            "patient_id": self.patient_id,
+            "used_vitals": self.used_vitals,
+            "vitals": self.vitals,
+            "result": self.result.model_dump(),
+            "source": self.source,
+        }
+
+
+def run_triage(
     symptom: str,
     patient_id: str = "demo-patient",
     llm: Optional[ChatOpenAI] = None,
     verbose: bool = True,
-) -> Tuple[TriageResult, str]:
-    """Run the full triage loop for one symptom report.
-
-    Returns (result, source) where source is one of:
-    "json" (Tier 1), "nl-classified" (Tier 2), or "fail-safe" (Tier 3).
-    """
+) -> TriageRun:
+    """Run the full DECIDE -> ACT -> TRIAGE loop and return the whole trace."""
     llm = llm or build_llm()
 
     # Step 1: decide whether to read vitals.
@@ -290,6 +309,9 @@ def triage_symptom(
         if use_vitals:
             print(f"  [tool]     get_vital_signs -> {vitals_str}")
 
+    def _run(result: TriageResult, source: str) -> TriageRun:
+        return TriageRun(symptom, patient_id, use_vitals, vitals, result, source)
+
     # Step 3: ask the model, then structure its answer.
     try:
         raw = (_ASSESS_PROMPT | llm).invoke(
@@ -298,10 +320,10 @@ def triage_symptom(
     except Exception as exc:
         if verbose:
             print(f"  [warn]     model call failed: {exc}")
-        return _rule_based_fallback(symptom, vitals), "fail-safe"
+        return _run(_rule_based_fallback(symptom, vitals), "fail-safe")
 
     if not raw or not raw.strip():
-        return _rule_based_fallback(symptom, vitals), "fail-safe"
+        return _run(_rule_based_fallback(symptom, vitals), "fail-safe")
 
     # Tier 1: the model emitted a JSON object we can validate directly.
     data = _extract_json(raw)
@@ -311,7 +333,7 @@ def triage_symptom(
             # parser whose format instructions a capable model would follow is
             # the one that validates the result.
             result = _parser.parse(json.dumps(data))
-            return _apply_safety_override(result, symptom, vitals), "json"
+            return _run(_apply_safety_override(result, symptom, vitals), "json")
         except Exception:
             pass
 
@@ -323,7 +345,22 @@ def triage_symptom(
         escalate_to_human=(urgency == "high"),
         reasoning=_first_sentences(raw),
     )
-    return _apply_safety_override(result, symptom, vitals), "nl-classified"
+    return _run(_apply_safety_override(result, symptom, vitals), "nl-classified")
+
+
+def triage_symptom(
+    symptom: str,
+    patient_id: str = "demo-patient",
+    llm: Optional[ChatOpenAI] = None,
+    verbose: bool = True,
+) -> Tuple[TriageResult, str]:
+    """Backward-compatible wrapper used by the CLI.
+
+    Returns (result, source) where source is one of:
+    "json" (Tier 1), "nl-classified" (Tier 2), or "fail-safe" (Tier 3).
+    """
+    run = run_triage(symptom, patient_id, llm=llm, verbose=verbose)
+    return run.result, run.source
 
 
 # --------------------------------------------------------------------------- #

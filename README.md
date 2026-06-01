@@ -117,15 +117,26 @@ capable model and it will start producing JSON directly with no code changes.
 
 ```
 .
-├── agent.py         # main agent: connect to mimOE, run the DECIDE → ACT → TRIAGE loop
+├── agent.py         # core agent: DECIDE → ACT → TRIAGE loop (run_triage / triage_symptom)
 ├── schemas.py       # Pydantic TriageResult output schema
 ├── tools.py         # get_vital_signs tool (simulated sensor data) + safety helpers
+├── server.py        # thin FastAPI layer: serves the UI, exposes /api/triage
+├── web/             # browser frontend (separation of concerns)
+│   ├── index.html   #   structure
+│   ├── styles.css   #   presentation (light/dark, responsive)
+│   └── app.js       #   behavior (calls the API; no clinical logic here)
 ├── .env             # local config (gitignored)
 ├── .env.example     # config template
-├── requirements.txt # langchain, langchain-openai, pydantic, python-dotenv
+├── requirements.txt # langchain, langchain-openai, pydantic, python-dotenv, fastapi, uvicorn
 ├── .gitignore       # excludes .env
 └── README.md
 ```
+
+**Separation of concerns.** The clinical logic lives only in `agent.py` /
+`schemas.py` / `tools.py`. `server.py` owns HTTP and nothing else. `web/` owns
+presentation and is split into structure / style / behavior. The same
+`run_triage()` powers both the CLI and the web API — the UI is a pure client of
+the agent, not a reimplementation of it.
 
 ---
 
@@ -146,6 +157,22 @@ python agent.py
 # 4. or triage a single report
 python agent.py "I have a fever of 39C and a stiff neck"
 ```
+
+### Web frontend (optional)
+
+A small, modern browser UI for interactive testing — symptom box, example
+presets, a color-coded urgency result, and the full agent trace (whether vitals
+were read, the vital-sign pills with out-of-range values flagged, and which
+output tier produced the result).
+
+```bash
+uvicorn server:app --port 8000     # then open http://127.0.0.1:8000
+```
+
+It is a vanilla HTML/CSS/JS frontend (no build step, no node_modules) served by
+FastAPI — deliberately lightweight to keep the focus on the agent. It supports
+light/dark themes, is responsive, and falls back gracefully if the endpoint is
+unreachable.
 
 `.env` values:
 

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>mimOE Health Triage</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">⊕</div>
+        <div>
+          <h1 class="brand__title">mimOE Health Triage</h1>
+          <p class="brand__sub">On-device symptom triage · BYO Framework · LangChain</p>
+        </div>
+      </div>
+      <div class="status" id="status" title="Inference endpoint">
+        <span class="status__dot" id="statusDot"></span>
+        <span class="status__text" id="statusText">connecting…</span>
+      </div>
+    </header>
+
+    <main class="grid">
+      <!-- Input panel -->
+      <section class="card panel-input" aria-label="Symptom input">
+        <h2 class="card__title">Symptom report</h2>
+
+        <label class="field">
+          <span class="field__label">Describe the symptoms</span>
+          <textarea id="symptom" class="field__input field__textarea"
+            rows="5"
+            placeholder="e.g. Sudden crushing chest pain spreading to my left arm and I feel short of breath."></textarea>
+        </label>
+
+        <div class="chips" id="examples" aria-label="Example reports">
+          <button class="chip" type="button" data-symptom="I have a mild runny nose and a slight sore throat since this morning.">Mild cold</button>
+          <button class="chip" type="button" data-symptom="Sudden crushing chest pain spreading to my left arm and I feel short of breath.">Chest pain</button>
+          <button class="chip" type="button" data-symptom="I feel a bit dizzy when I stand up quickly but it passes.">Dizziness</button>
+          <button class="chip" type="button" data-symptom="I think my friend took an overdose and is barely responsive.">Overdose</button>
+        </div>
+
+        <label class="field">
+          <span class="field__label">Patient ID</span>
+          <input id="patientId" class="field__input" type="text" value="demo-patient" />
+        </label>
+
+        <button id="triageBtn" class="btn btn--primary" type="button">
+          <span class="btn__label">Run triage</span>
+          <span class="btn__spinner" aria-hidden="true"></span>
+        </button>
+      </section>
+
+      <!-- Result panel -->
+      <section class="card panel-result" aria-live="polite">
+        <!-- Empty state -->
+        <div class="empty" id="emptyState">
+          <div class="empty__icon" aria-hidden="true">🩺</div>
+          <p class="empty__text">Enter a symptom report and run triage.<br />Results appear here.</p>
+        </div>
+
+        <!-- Result -->
+        <div class="result" id="result" hidden>
+          <div class="result__header">
+            <span class="badge" id="urgencyBadge">—</span>
+            <span class="escalate" id="escalateFlag" hidden>⚑ Escalate to human</span>
+          </div>
+
+          <div class="result__block">
+            <h3 class="result__label">Recommended action</h3>
+            <p class="result__action" id="action"></p>
+          </div>
+
+          <div class="result__block">
+            <h3 class="result__label">Reasoning</h3>
+            <p class="result__reasoning" id="reasoning"></p>
+          </div>
+
+          <!-- Agent trace -->
+          <div class="trace">
+            <h3 class="result__label">Agent trace</h3>
+            <div class="trace__row">
+              <span class="trace__key">Read vital signs?</span>
+              <span class="trace__val" id="usedVitals">—</span>
+            </div>
+            <div class="trace__row" id="vitalsRow">
+              <span class="trace__key">Vital signs</span>
+              <span class="vitals" id="vitals"></span>
+            </div>
+            <div class="trace__row">
+              <span class="trace__key">Output path</span>
+              <span class="source" id="source">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Technical demo — not a medical device. No medical advice.</span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="alert" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
